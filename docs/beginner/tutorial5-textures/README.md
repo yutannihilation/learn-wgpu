@@ -3,7 +3,6 @@
 Up to this point we have been drawing super simple shapes. While we can make a game with just triangles, but trying to draw highly detailed objects would massively limit what devices could even run our game. We can get around this problem with textures. Textures are images overlayed over a triangle mesh to make the mesh seem more detailed. There are multiple types of textures such as normal maps, bump maps, specular maps, and diffuse maps. We're going to talk about diffuse maps, or in laymens terms, the color texture.
 
 ## Loading an image from a file
-
 If we want to map an image to our mesh, we first need an image. Let's use this happy little tree.
 
 ![a happy tree](./happy-tree.png)
