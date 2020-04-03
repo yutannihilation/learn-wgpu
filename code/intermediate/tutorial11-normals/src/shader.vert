@@ -10,7 +10,9 @@ layout(location=2) out vec3 v_position;
 
 layout(set=1, binding=0) 
 uniform Uniforms {
-    mat4 u_view_proj;
+    // mat4 u_view_proj;
+    mat4 u_view;
+    mat4 u_proj;
 };
 
 layout(set=1, binding=1) 
@@ -27,7 +29,8 @@ void main() {
     mat3 normal_matrix = mat3(transpose(inverse(mat3(model))));
     v_normal = normal_matrix * a_normal;
 
-    gl_Position = u_view_proj * model * vec4(a_position, 1.0);
+    mat4 view_model = u_view * model;
+    gl_Position = u_proj * view_model * vec4(a_position, 1.0);
 
     // Get the position relative to the view for the lighting calc
     v_position = gl_Position.xyz / gl_Position.w;

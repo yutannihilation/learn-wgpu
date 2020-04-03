@@ -19,7 +19,7 @@ uniform Lights {
 const vec3 ambient_color = vec3(0.0, 0.0, 0.0);
 const vec3 specular_color = vec3(1.0, 1.0, 1.0);
 
-const float shininess = 32;
+const float shininess = 16;
 
 mat3 cotangent_frame(vec3 normal, vec3 pos, vec2 uv) {
     vec3 dp1 = dFdx(pos);
@@ -43,6 +43,8 @@ void main() {
 
     mat3 tbn = cotangent_frame(v_normal, v_position, v_tex_coords);
     vec3 real_normal = normalize(tbn * normal);
+
+    // real_normal = v_normal;
 
     vec4 diffuse_color = texture(sampler2D(t_diffuse, s_diffuse), v_tex_coords);
     float diffuse_term = max(dot(real_normal, normalize(u_light)), 0);

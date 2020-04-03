@@ -38,23 +38,39 @@ impl Camera {
         let proj = cgmath::perspective(cgmath::Deg(self.fovy), self.aspect, self.znear, self.zfar);
         return proj * view;
     }
+
+    fn build_view_matrix(&self) -> cgmath::Matrix4<f32> {
+        let view = cgmath::Matrix4::look_at(self.eye, self.target, self.up);
+        view
+    }
+
+    fn build_proj_matrix(&self) -> cgmath::Matrix4<f32> {
+        let proj = cgmath::perspective(cgmath::Deg(self.fovy), self.aspect, self.znear, self.zfar);
+        proj
+    }
 }
 
 #[repr(C)]
 #[derive(Copy, Clone)]
 struct Uniforms {
-    view_proj: cgmath::Matrix4<f32>,
+    // view_proj: cgmath::Matrix4<f32>,
+    view: cgmath::Matrix4<f32>,
+    proj: cgmath::Matrix4<f32>,
 }
 
 impl Uniforms {
     fn new() -> Self {
         Self {
-            view_proj: cgmath::Matrix4::identity(),
+            // view_proj: cgmath::Matrix4::identity(),
+            view: cgmath::Matrix4::identity(),
+            proj: cgmath::Matrix4::identity(),
         }
     }
 
     fn update_view_proj(&mut self, camera: &Camera) {
-        self.view_proj = OPENGL_TO_WGPU_MATRIX * camera.build_view_projection_matrix();
+        // self.view_proj = OPENGL_TO_WGPU_MATRIX * camera.build_view_projection_matrix();
+        self.view = camera.build_view_matrix();
+        self.proj = OPENGL_TO_WGPU_MATRIX * camera.build_proj_matrix();
     }
 }
 
@@ -280,7 +296,7 @@ impl State {
 
                 let position = cgmath::Vector3 { x, y: 0.0, z };
 
-                let rotation = if position.is_zero() {
+                let rotation = if position.is_zero() || true {
                     cgmath::Quaternion::from_axis_angle(cgmath::Vector3::unit_z(), cgmath::Deg(0.0))
                 } else {
                     cgmath::Quaternion::from_axis_angle(position.clone().normalize(), cgmath::Deg(45.0))
@@ -295,14 +311,14 @@ impl State {
         let instance_data = instances.iter().map(Instance::to_matrix).collect::<Vec<_>>();
         let instance_buffer_size = instance_data.len() * std::mem::size_of::<cgmath::Matrix4<f32>>();
         let instance_buffer = device
-            .create_buffer_mapped(instance_data.len(), wgpu::BufferUsage::STORAGE_READ)
+            .create_buffer_mapped(instance_data.len(), wgpu::BufferUsage::STORAGE_READ | wgpu::BufferUsage::COPY_DST)
             .fill_from_slice(&instance_data);
 
         let light = Light {
-            direction: (-1.0, 0.4, -0.9).into(),
+            direction: (-1.0, 1.0, 0.0).into(),
         };
         let light_buffer = device
-            .create_buffer_mapped(1, wgpu::BufferUsage::UNIFORM)
+            .create_buffer_mapped(1, wgpu::BufferUsage::UNIFORM | wgpu::BufferUsage::COPY_DST)
             .fill_from_slice(&[light]);
 
         let uniform_bind_group_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
@@ -474,7 +490,29 @@ impl State {
             .create_buffer_mapped(1, wgpu::BufferUsage::COPY_SRC)
             .fill_from_slice(&[self.uniforms]);
 
-        encoder.copy_buffer_to_buffer(&staging_buffer, 0, &self.uniform_buffer, 0, std::mem::size_of::<Uniforms>() as wgpu::BufferAddress);
+        encoder.copy_buffer_to_buffer(&staging_buffer, 0, &self.uniform_buffer, 0, std::mem::size_of::<Uniforms>() as wgpu::BufferAddress); 
+
+        // update the light
+        // let old_direction = self.light.direction
+        // let rotation = cgmath::Quaternion
+        let rotation = cgmath::Matrix3::from_angle_y(cgmath::Deg(1.0));
+        self.light.direction = rotation * self.light.direction;
+
+        let staging_buffer = self.device
+            .create_buffer_mapped(1, wgpu::BufferUsage::COPY_SRC)
+            .fill_from_slice(&[self.light]);
+        
+        encoder.copy_buffer_to_buffer(&staging_buffer, 0, &self.light_buffer, 0, std::mem::size_of::<Light>() as wgpu::BufferAddress);
+
+        self.instances[0].position = self.light.direction;
+        
+        let staging_buffer = self.device
+            .create_buffer_mapped(1, wgpu::BufferUsage::COPY_SRC)
+            .fill_from_slice(&[self.instances[0].to_matrix()]);
+        
+        encoder.copy_buffer_to_buffer(&staging_buffer, 0, &self.instance_buffer, 0, std::mem::size_of::<cgmath::Matrix4<f32>>() as wgpu::BufferAddress);
+        // let staging_buffer = self.device
+        //     .create_buffer_mapped(self.instances.len(), usage: BufferUsage)
 
         self.queue.submit(&[encoder.finish()]);
     }
