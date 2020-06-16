@@ -301,25 +301,31 @@ impl State {
     async fn new(window: &Window) -> Self {
         let size = window.inner_size();
 
-        let surface = wgpu::Surface::create(window);
-        let adapter = wgpu::Adapter::request(
-            &wgpu::RequestAdapterOptions {
-                power_preference: wgpu::PowerPreference::Default,
-                compatible_surface: Some(&surface),
-            },
-            wgpu::BackendBit::PRIMARY, // Vulkan + Metal + DX12 + Browser WebGPU
-        )
-        .await
-        .unwrap();
+        let instance = wgpu::Instance::new();
+        let surface = unsafe { instance.create_surface(window) };
+        let adapter = instance
+            .request_adapter(
+                &wgpu::RequestAdapterOptions {
+                    power_preference: wgpu::PowerPreference::Default,
+                    compatible_surface: Some(&surface),
+                },
+                unsafe { wgpu::UnsafeExtensions::allow() },
+                wgpu::BackendBit::PRIMARY, // Vulkan + Metal + DX12 + Browser WebGPU
+            )
+            .await
+            .unwrap();
 
         let (device, queue) = adapter
-            .request_device(&wgpu::DeviceDescriptor {
-                extensions: wgpu::Extensions {
-                    anisotropic_filtering: false,
+            .request_device(
+                &wgpu::DeviceDescriptor {
+                    extensions: wgpu::Extensions::ANISOTROPIC_FILTERING,
+                    limits: Default::default(),
+                    shader_validation: true,
                 },
-                limits: Default::default(),
-            })
-            .await;
+                None,
+            )
+            .await
+            .unwrap();
 
         let sc_desc = wgpu::SwapChainDescriptor {
             usage: wgpu::TextureUsage::OUTPUT_ATTACHMENT,
@@ -333,7 +339,7 @@ impl State {
         let diffuse_bytes = include_bytes!("happy-tree.png");
         let (diffuse_texture, cmd_buffer) =
             texture::Texture::from_bytes(&device, diffuse_bytes, "happy-tree.png").unwrap();
-        queue.submit(&[cmd_buffer]);
+        queue.submit(Some(cmd_buffer));
 
         let texture_bind_group_layout =
             device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
@@ -346,11 +352,13 @@ impl State {
                             dimension: wgpu::TextureViewDimension::D2,
                             component_type: wgpu::TextureComponentType::Uint,
                         },
+                        ..wgpu::BindGroupLayoutEntry::default()
                     },
                     wgpu::BindGroupLayoutEntry {
                         binding: 1,
                         visibility: wgpu::ShaderStage::FRAGMENT,
                         ty: wgpu::BindingType::Sampler { comparison: false },
+                        ..wgpu::BindGroupLayoutEntry::default()
                     },
                 ],
                 label: Some("texture_bind_group_layout"),
@@ -435,7 +443,6 @@ impl State {
 
         let instance_texture = device.create_texture(&wgpu::TextureDescriptor {
             size: instance_extent,
-            array_layer_count: 1,
             mip_level_count: 1,
             sample_count: 1,
             dimension: wgpu::TextureDimension::D1,
@@ -454,7 +461,8 @@ impl State {
             mipmap_filter: wgpu::FilterMode::Nearest,
             lod_min_clamp: -100.0,
             lod_max_clamp: 100.0,
-            compare: wgpu::CompareFunction::Always,
+            compare: Some(wgpu::CompareFunction::Always),
+            ..Default::default()
         });
 
         let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
@@ -463,19 +471,20 @@ impl State {
         encoder.copy_buffer_to_texture(
             wgpu::BufferCopyView {
                 buffer: &instance_buffer,
-                offset: 0,
-                bytes_per_row: std::mem::size_of::<f32>() as u32 * 4,
-                rows_per_image: instance_data.len() as u32 * 4,
+                layout: wgpu::TextureDataLayout {
+                    offset: 0,
+                    bytes_per_row: std::mem::size_of::<f32>() as u32 * 4,
+                    rows_per_image: instance_data.len() as u32 * 4,
+                },
             },
             wgpu::TextureCopyView {
                 texture: &instance_texture,
                 mip_level: 0,
-                array_layer: 0,
                 origin: wgpu::Origin3d::ZERO,
             },
             instance_extent,
         );
-        queue.submit(&[encoder.finish()]);
+        queue.submit(Some(encoder.finish()));
 
         let uniform_bind_group_layout =
             device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
@@ -484,6 +493,7 @@ impl State {
                         binding: 0,
                         visibility: wgpu::ShaderStage::VERTEX,
                         ty: wgpu::BindingType::UniformBuffer { dynamic: false },
+                        ..wgpu::BindGroupLayoutEntry::default()
                     },
                     wgpu::BindGroupLayoutEntry {
                         binding: 1,
@@ -493,11 +503,13 @@ impl State {
                             component_type: wgpu::TextureComponentType::Uint,
                             dimension: wgpu::TextureViewDimension::D1,
                         },
+                        ..wgpu::BindGroupLayoutEntry::default()
                     },
                     wgpu::BindGroupLayoutEntry {
                         binding: 2,
                         visibility: wgpu::ShaderStage::VERTEX,
                         ty: wgpu::BindingType::Sampler { comparison: false },
+                        ..wgpu::BindGroupLayoutEntry::default()
                     },
                 ],
                 label: Some("uniform_bind_group_layout"),
@@ -508,10 +520,7 @@ impl State {
             bindings: &[
                 wgpu::Binding {
                     binding: 0,
-                    resource: wgpu::BindingResource::Buffer {
-                        buffer: &uniform_buffer,
-                        range: 0..std::mem::size_of_val(&uniforms) as wgpu::BufferAddress,
-                    },
+                    resource: wgpu::BindingResource::Buffer(uniform_buffer.slice(..)),
                 },
                 wgpu::Binding {
                     binding: 1,
@@ -655,14 +664,15 @@ impl State {
             std::mem::size_of::<Uniforms>() as wgpu::BufferAddress,
         );
 
-        self.queue.submit(&[encoder.finish()]);
+        self.queue.submit(Some(encoder.finish()));
     }
 
     fn render(&mut self) {
         let frame = self
             .swap_chain
-            .get_next_texture()
-            .expect("Timeout getting texture");
+            .get_next_frame()
+            .expect("Timeout getting texture")
+            .output;
 
         let mut encoder = self
             .device
@@ -690,12 +700,12 @@ impl State {
             render_pass.set_pipeline(&self.render_pipeline);
             render_pass.set_bind_group(0, &self.diffuse_bind_group, &[]);
             render_pass.set_bind_group(1, &self.uniform_bind_group, &[]);
-            render_pass.set_vertex_buffer(0, &self.vertex_buffer, 0, 0);
-            render_pass.set_index_buffer(&self.index_buffer, 0, 0);
+            render_pass.set_vertex_buffer(0, self.vertex_buffer.slice(..));
+            render_pass.set_index_buffer(self.index_buffer.slice(..));
             render_pass.draw_indexed(0..self.num_indices, 0, 0..NUM_INSTANCES);
         }
 
-        self.queue.submit(&[encoder.finish()]);
+        self.queue.submit(Some(encoder.finish()));
     }
 }
 

@@ -32,7 +32,6 @@ impl Texture {
         let texture = device.create_texture(&wgpu::TextureDescriptor {
             label,
             size,
-            array_layer_count: 1,
             mip_level_count: 1,
             sample_count: 1,
             dimension: wgpu::TextureDimension::D2,
@@ -49,14 +48,15 @@ impl Texture {
         encoder.copy_buffer_to_texture(
             wgpu::BufferCopyView {
                 buffer: &buffer,
-                offset: 0,
-                bytes_per_row: 4 * dimensions.0,
-                rows_per_image: dimensions.1,
+                layout: wgpu::TextureDataLayout {
+                    offset: 0,
+                    bytes_per_row: 4 * dimensions.0,
+                    rows_per_image: dimensions.1,
+                },
             },
             wgpu::TextureCopyView {
                 texture: &texture,
                 mip_level: 0,
-                array_layer: 0,
                 origin: wgpu::Origin3d::ZERO,
             },
             size,
@@ -74,7 +74,8 @@ impl Texture {
             mipmap_filter: wgpu::FilterMode::Nearest,
             lod_min_clamp: -100.0,
             lod_max_clamp: 100.0,
-            compare: wgpu::CompareFunction::Always,
+            compare: Some(wgpu::CompareFunction::Always),
+            ..Default::default()
         });
 
         Ok((
