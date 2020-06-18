@@ -465,26 +465,20 @@ impl State {
             ..Default::default()
         });
 
-        let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
-            label: Some("instance_texture_encoder"),
-        });
-        encoder.copy_buffer_to_texture(
-            wgpu::BufferCopyView {
-                buffer: &instance_buffer,
-                layout: wgpu::TextureDataLayout {
-                    offset: 0,
-                    bytes_per_row: std::mem::size_of::<f32>() as u32 * 4,
-                    rows_per_image: instance_data.len() as u32 * 4,
-                },
-            },
+        queue.write_texture(
             wgpu::TextureCopyView {
                 texture: &instance_texture,
                 mip_level: 0,
                 origin: wgpu::Origin3d::ZERO,
             },
+            &bytemuck::cast_slice(&instance_data),
+            wgpu::TextureDataLayout {
+                offset: 0,
+                bytes_per_row: std::mem::size_of::<f32>() as u32 * 4,
+                rows_per_image: instance_data.len() as u32 * 4,
+            },
             instance_extent,
         );
-        queue.submit(Some(encoder.finish()));
 
         let uniform_bind_group_layout =
             device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
