@@ -301,7 +301,7 @@ impl State {
     async fn new(window: &Window) -> Self {
         let size = window.inner_size();
 
-        let instance = wgpu::Instance::new();
+        let instance = wgpu::Instance::new(wgpu::BackendBit::PRIMARY);
         let surface = unsafe { instance.create_surface(window) };
         let adapter = instance
             .request_adapter(
@@ -310,7 +310,6 @@ impl State {
                     compatible_surface: Some(&surface),
                 },
                 unsafe { wgpu::UnsafeExtensions::allow() },
-                wgpu::BackendBit::PRIMARY, // Vulkan + Metal + DX12 + Browser WebGPU
             )
             .await
             .unwrap();
@@ -344,22 +343,20 @@ impl State {
         let texture_bind_group_layout =
             device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
                 bindings: &[
-                    wgpu::BindGroupLayoutEntry {
-                        binding: 0,
-                        visibility: wgpu::ShaderStage::FRAGMENT,
-                        ty: wgpu::BindingType::SampledTexture {
+                    wgpu::BindGroupLayoutEntry::new(
+                        0,
+                        wgpu::ShaderStage::FRAGMENT,
+                        wgpu::BindingType::SampledTexture {
                             multisampled: false,
                             dimension: wgpu::TextureViewDimension::D2,
                             component_type: wgpu::TextureComponentType::Uint,
                         },
-                        ..wgpu::BindGroupLayoutEntry::default()
-                    },
-                    wgpu::BindGroupLayoutEntry {
-                        binding: 1,
-                        visibility: wgpu::ShaderStage::FRAGMENT,
-                        ty: wgpu::BindingType::Sampler { comparison: false },
-                        ..wgpu::BindGroupLayoutEntry::default()
-                    },
+                    ),
+                    wgpu::BindGroupLayoutEntry::new(
+                        1,
+                        wgpu::ShaderStage::FRAGMENT,
+                        wgpu::BindingType::Sampler { comparison: false },
+                    ),
                 ],
                 label: Some("texture_bind_group_layout"),
             });
@@ -483,28 +480,30 @@ impl State {
         let uniform_bind_group_layout =
             device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
                 bindings: &[
-                    wgpu::BindGroupLayoutEntry {
-                        binding: 0,
-                        visibility: wgpu::ShaderStage::VERTEX,
-                        ty: wgpu::BindingType::UniformBuffer { dynamic: false },
-                        ..wgpu::BindGroupLayoutEntry::default()
-                    },
-                    wgpu::BindGroupLayoutEntry {
-                        binding: 1,
-                        visibility: wgpu::ShaderStage::VERTEX,
-                        ty: wgpu::BindingType::SampledTexture {
+                    wgpu::BindGroupLayoutEntry::new(
+                        0,
+                        wgpu::ShaderStage::VERTEX,
+                        wgpu::BindingType::UniformBuffer {
+                            dynamic: false,
+                            min_binding_size: wgpu::BufferSize::new(
+                                std::mem::size_of::<Uniforms>() as _,
+                            ),
+                        },
+                    ),
+                    wgpu::BindGroupLayoutEntry::new(
+                        1,
+                        wgpu::ShaderStage::VERTEX,
+                        wgpu::BindingType::SampledTexture {
                             multisampled: false,
                             component_type: wgpu::TextureComponentType::Uint,
                             dimension: wgpu::TextureViewDimension::D1,
                         },
-                        ..wgpu::BindGroupLayoutEntry::default()
-                    },
-                    wgpu::BindGroupLayoutEntry {
-                        binding: 2,
-                        visibility: wgpu::ShaderStage::VERTEX,
-                        ty: wgpu::BindingType::Sampler { comparison: false },
-                        ..wgpu::BindGroupLayoutEntry::default()
-                    },
+                    ),
+                    wgpu::BindGroupLayoutEntry::new(
+                        2,
+                        wgpu::ShaderStage::VERTEX,
+                        wgpu::BindingType::Sampler { comparison: false },
+                    ),
                 ],
                 label: Some("uniform_bind_group_layout"),
             });
@@ -549,10 +548,10 @@ impl State {
                 None,
             )
             .unwrap();
-        let vs_data = wgpu::read_spirv(std::io::Cursor::new(vs_spirv.as_binary_u8())).unwrap();
-        let fs_data = wgpu::read_spirv(std::io::Cursor::new(fs_spirv.as_binary_u8())).unwrap();
-        let vs_module = device.create_shader_module(&vs_data);
-        let fs_module = device.create_shader_module(&fs_data);
+        let vs_data = wgpu::util::make_spirv(vs_spirv.as_binary_u8());
+        let fs_data = wgpu::util::make_spirv(fs_spirv.as_binary_u8());
+        let vs_module = device.create_shader_module(vs_data);
+        let fs_module = device.create_shader_module(fs_data);
 
         let render_pipeline_layout =
             device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
@@ -679,13 +678,14 @@ impl State {
                 color_attachments: &[wgpu::RenderPassColorAttachmentDescriptor {
                     attachment: &frame.view,
                     resolve_target: None,
-                    load_op: wgpu::LoadOp::Clear,
-                    store_op: wgpu::StoreOp::Store,
-                    clear_color: wgpu::Color {
-                        r: 0.1,
-                        g: 0.2,
-                        b: 0.3,
-                        a: 1.0,
+                    ops: wgpu::Operations {
+                        load: wgpu::LoadOp::Clear(wgpu::Color {
+                            r: 0.1,
+                            g: 0.2,
+                            b: 0.3,
+                            a: 1.0,
+                        }),
+                        store: true,
                     },
                 }],
                 depth_stencil_attachment: None,
