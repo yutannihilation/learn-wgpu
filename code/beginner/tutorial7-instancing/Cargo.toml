@@ -12,7 +12,8 @@ winit = "0.22.1"
 shaderc = "0.6"
 cgmath = "0.17"
 failure = "0.1"
-wgpu = "0.5.0"
+# wgpu = "0.5.0"
+wgpu = { git = "https://github.com/gfx-rs/wgpu-rs/" }
 futures = "0.3.4"
 bytemuck = "1.2.0"
 
@@ -24,3 +25,7 @@ path = "src/main.rs"
 [[bin]]
 name = "tutorial7-challenge"
 path = "src/challenge.rs"
+
+[[example]]
+name = "tutorial7-texture"
+path = "examples/texture_instances.rs"
